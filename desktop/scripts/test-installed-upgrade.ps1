@@ -1,5 +1,22 @@
 $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_ACTIONS -ne 'true') { throw 'This test installs Sfery and is restricted to the disposable Actions runner.' }
+function Get-SferyWebviewVersion {
+    foreach ($sferyReg in @('HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'HKCU:\Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}')) {
+        $sferyRuntime = Get-ItemProperty -LiteralPath $sferyReg -Name pv -ErrorAction SilentlyContinue
+        if ($sferyRuntime.pv -and $sferyRuntime.pv -ne '0.0.0.0') { return $sferyRuntime.pv }
+    }
+    return $null
+}
+$sferyWebviewVersion = Get-SferyWebviewVersion
+if (-not $sferyWebviewVersion) {
+    $sferyBootstrap = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebview2Setup.exe'
+    Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $sferyBootstrap
+    if ((Get-AuthenticodeSignature -LiteralPath $sferyBootstrap).Status -ne 'Valid') { throw 'Microsoft WebView2 bootstrapper signature invalid' }
+    $sferyBootstrapProcess = Start-Process -FilePath $sferyBootstrap -ArgumentList @('/silent','/install') -WindowStyle Hidden -Wait -PassThru
+    $sferyWebviewVersion = Get-SferyWebviewVersion
+    if (-not $sferyWebviewVersion) { throw "WebView2 runtime installation failed: $($sferyBootstrapProcess.ExitCode)" }
+}
+Write-Host "WebView2 runtime: $sferyWebviewVersion"
 $sferyRoot = Split-Path -Parent $PSScriptRoot
 $sferyOutput = Join-Path $sferyRoot 'dist\update-1.45.0\verification'
 $sferyInstall = Join-Path $env:RUNNER_TEMP 'SferyUpgradeInstall'
@@ -18,12 +35,19 @@ $env:SFERY_TEST_EXE = $sferyExe
 $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9239'
 $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $env:RUNNER_TEMP 'SferyUpgradeWebView'
 function Test-SferyStage([string]$Stage) {
-    $sferyProcess = Start-Process -FilePath $sferyExe -WindowStyle Hidden -PassThru
+    $sferyProcess = Start-Process -FilePath $sferyExe -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $sferyOutput "$Stage-stdout.log") -RedirectStandardError (Join-Path $sferyOutput "$Stage-stderr.log")
+    Write-Host "$Stage process started: $($sferyProcess.Id)"
     try {
         & node (Join-Path $PSScriptRoot 'installed-smoke.cjs') $Stage $sferyOutput
         if ($LASTEXITCODE -ne 0) { throw "$Stage application check failed" }
         if (-not $sferyProcess.WaitForExit(10000)) { throw "$Stage did not close cleanly" }
         if ($sferyProcess.ExitCode -ne 0) { throw "$Stage exited with $($sferyProcess.ExitCode)" }
+    } catch {
+        Get-Content -LiteralPath (Join-Path $sferyOutput "$Stage-stderr.log") -ErrorAction SilentlyContinue
+        Write-Host "Process exited: $($sferyProcess.HasExited)"
+        if ($sferyProcess.HasExited) { Write-Host "Exit code: $($sferyProcess.ExitCode)" }
+        Get-Process local-planner,msedgewebview2 -ErrorAction SilentlyContinue | Select-Object Id,Name,Path | Format-Table
+        throw
     } finally {
         if (-not $sferyProcess.HasExited) { Stop-Process -Id $sferyProcess.Id -Force }
     }

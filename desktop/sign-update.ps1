@@ -11,7 +11,7 @@ $sferyArgs += $sferyInstaller
 & $sferyTauri @sferyArgs | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Updater signing failed' }
 & node (Join-Path $PSScriptRoot 'scripts\verify-signature.cjs') $sferyInstaller
-if ($LASTEXITCODE -ne 0) { throw 'Signing key does not match the key embedded in ordinary Sfery. Do not publish.' }
+if ($LASTEXITCODE -ne 0) { throw 'Signing key does not match the key embedded in recovered Sfery. Do not publish.' }
 $sferySignature = (Get-Content -Raw -LiteralPath ($sferyInstaller + '.sig')).Trim()
 $sferyName = [IO.Path]::GetFileName($sferyInstaller)
 $sferyManifest = [ordered]@{
@@ -20,5 +20,6 @@ $sferyManifest = [ordered]@{
     pub_date = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
     platforms = @{ 'windows-x86_64' = @{ url = "https://github.com/pankovvlad313-png/sferya/releases/download/v$($sferyConfig.version)/$sferyName"; signature = $sferySignature } }
 }
-$sferyManifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path (Split-Path -Parent $sferyInstaller) 'latest.json') -Encoding utf8NoBOM
-Write-Host 'Signature verified. latest.json prepared locally; nothing published.'
+$sferyManifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path (Split-Path -Parent $sferyInstaller) 'latest-v2.json') -Encoding utf8NoBOM
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'release\legacy-latest.json') -Destination (Join-Path (Split-Path -Parent $sferyInstaller) 'latest.json')
+Write-Host 'Signature verified. New-channel latest-v2.json and unchanged legacy latest.json prepared locally; nothing published.'

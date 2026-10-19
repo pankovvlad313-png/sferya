@@ -13,7 +13,7 @@ New-Item -ItemType Directory -Path $sferyStage | Out-Null
 $sferySetup = Join-Path $sferyStage 'original-setup.exe'
 Invoke-WebRequest -Uri 'https://github.com/pankovvlad313-png/sferya/releases/download/v1.44.0/Sfery_1.44.0_x64-setup.exe' -OutFile $sferySetup
 Invoke-WebRequest -Uri 'https://github.com/pankovvlad313-png/sferya/releases/download/v1.44.0/Sfery_1.44.0_x64-setup.exe.sig' -OutFile ($sferySetup + '.sig')
-& node (Join-Path $PSScriptRoot 'verify-signature.cjs') $sferySetup
+& node (Join-Path $PSScriptRoot 'verify-signature.cjs') $sferySetup --legacy
 if ($LASTEXITCODE -ne 0) { throw 'Original installer signature invalid' }
 $sfery7z = Get-Command 7z.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source
 if (-not $sfery7z) { $sfery7z = 'C:\Program Files\7-Zip\7z.exe' }

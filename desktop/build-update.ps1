@@ -25,6 +25,9 @@ try {
     New-Item -ItemType Directory -Path $sferyOut -Force | Out-Null
     Copy-Item -LiteralPath $sferySetup[0].FullName -Destination $sferyOut
     Copy-Item -LiteralPath (Join-Path $sferyBuild 'release\local-planner.exe') -Destination $sferyOut
+    Copy-Item -LiteralPath (Join-Path $sferyRoot 'release\legacy-latest.json') -Destination (Join-Path $sferyOut 'latest.json')
+    Copy-Item -LiteralPath (Join-Path $sferyRoot 'release\Update-Sfery.cmd') -Destination $sferyOut
+    Copy-Item -LiteralPath (Join-Path $sferyRoot 'release\MANUAL-UPGRADE.md') -Destination $sferyOut
     Get-ChildItem -LiteralPath $sferyOut -File -Filter '*.exe' | Get-FileHash -Algorithm SHA256 | Select-Object @{N='file';E={Split-Path $_.Path -Leaf}},Hash | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $sferyOut 'checksums.json') -Encoding utf8NoBOM
     Write-Host "Unsigned candidate ready: $sferyOut. Test it before signing or publishing."
 } finally {

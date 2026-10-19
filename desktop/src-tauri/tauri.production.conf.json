@@ -13,8 +13,8 @@
   },
   "plugins": {
     "updater": {
-      "endpoints": ["https://github.com/pankovvlad313-png/sferya/releases/latest/download/latest.json"],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlBOUREMEI4RENEQzlBODQKUldTRW10emN1TkNkbXZRQUlqcGIvNEFkMXducnpiWCtKY1BSWEEyRXRaUytYRXZkV1pvQ25yVjgK",
+      "endpoints": ["https://github.com/pankovvlad313-png/sferya/releases/latest/download/latest-v2.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDcyRkNGMUFFQjA5Q0UyQkUKUldTKzRweXdydkg4Y2xwbitaVXQ1cGIzaGJoaEtvYjc4aVF0bm55cDBkQzB3R1MzTmRBaTlDd1AK",
       "windows": { "installMode": "passive" }
     }
   }

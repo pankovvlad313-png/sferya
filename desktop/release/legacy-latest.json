@@ -1,0 +1,11 @@
+{
+  "version": "1.44.0",
+  "notes": "Прятки со Сфериком в три раунда. Новые укрытия за текстами, карточками, кнопками и другими видимыми элементами интерфейса.",
+  "pub_date": "2026-10-08T18:09:11Z",
+  "platforms": {
+    "windows-x86_64": {
+      "url": "https://github.com/pankovvlad313-png/sferya/releases/download/v1.44.0/Sfery_1.44.0_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTRW10emN1TkNkbXR4cWNqaFhuNTVSQkRsL1pqREoyRVl4TVlRSERtSEFaYzNzb2paNC9yM0UzMUJwdGhvK0ZOTHR3dUlwRHg2anJTQ2UvSXNmYi9QYmxTQjhWN2JrYlFBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkxNDgyOTUwCWZpbGU6U2ZlcnlfMS40NC4wX3g2NC1zZXR1cC5leGUJdmVyc2lvbjoxLjQ0LjAKY3lBWUhmdmtaL1BnVmhmUUV2YmwwK29ZQVNBcmpGVUM0c1Q5Y01iSVVzdVlDU1d5UkFhQ2hJWllHRDVQMXJzVjZ1KzVRQ3FManJBVzArOG1PRWJpQVE9PQo="
+    }
+  }
+}

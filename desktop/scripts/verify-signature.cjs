@@ -1,4 +1,4 @@
-// Tauri's base64-wrapped Minisign format, verified against the original public key.
+// Tauri's base64-wrapped Minisign format; legacy and current channels use distinct keys.
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const path = require('node:path');
@@ -11,7 +11,7 @@ function verify(bytes, encodedSignature, encodedPublicKey) {
   if (pub.length !== 42 || sig.length !== 74 || global.length !== 64 ||
       pub.subarray(0, 2).toString() !== 'Ed' || sig.subarray(0, 2).toString() !== 'ED' ||
       !sig.subarray(2, 10).equals(pub.subarray(2, 10)) || !sigLines[2]?.startsWith('trusted comment: ')) {
-    throw Error('Signature does not match the original Sfery key or format');
+    throw Error('Signature does not match the configured Sfery key or format');
   }
   const key = crypto.createPublicKey({key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), pub.subarray(10)]), format: 'der', type: 'spki'});
   if (!crypto.verify(null, crypto.createHash('blake2b512').update(bytes).digest(), key, sig.subarray(10)) ||
@@ -24,7 +24,8 @@ module.exports = {verify};
 if (require.main === module) {
   const file = process.argv[2];
   if (!file) throw Error('Usage: node scripts/verify-signature.cjs <installer>');
-  const config = JSON.parse(fs.readFileSync(path.join(__dirname, '../src-tauri/tauri.production.conf.json')));
-  verify(fs.readFileSync(file), fs.readFileSync(file + '.sig', 'utf8'), config.plugins.updater.pubkey);
-  console.log('Updater signature verified against the original Sfery public key.');
+  const legacy = process.argv.includes('--legacy');
+  const config = JSON.parse(fs.readFileSync(path.join(__dirname, legacy ? '../release/legacy-updater.json' : '../src-tauri/tauri.production.conf.json')));
+  verify(fs.readFileSync(file), fs.readFileSync(file + '.sig', 'utf8'), legacy ? config.pubkey : config.plugins.updater.pubkey);
+  console.log(`Updater signature verified against the ${legacy ? 'original' : 'current'} Sfery public key.`);
 }
