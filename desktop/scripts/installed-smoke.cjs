@@ -11,11 +11,12 @@ const clean = v => {
 };
 (async()=>{
   let target;
+  let lastStatus='No connection';
   for(let i=0;i<80;i++){
-    try {target=(await (await fetch('http://127.0.0.1:9239/json/list')).json()).find(p=>p.type==='page' && p.webSocketDebuggerUrl);}catch{}
+    try {const response=await fetch('http://127.0.0.1:9239/json/list');const pages=await response.json();lastStatus=JSON.stringify(pages.map(p=>({type:p.type,url:p.url})));target=pages.find(p=>p.type==='page' && p.webSocketDebuggerUrl);}catch(error){lastStatus=error.cause?.code||error.message}
     if(target)break; await delay(500);
   }
-  assert.ok(target,'WebView2 did not start');
+  assert.ok(target,'WebView2 did not start: '+lastStatus);
   const ws=new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((resolve,reject)=>{ws.onopen=resolve;ws.onerror=reject});
   let id=0;const pending=new Map();
@@ -26,7 +27,7 @@ const clean = v => {
   assert.ok(!evaluation.exceptionDetails,JSON.stringify(evaluation.exceptionDetails));
   const result=evaluation.result.value;
   assert.match(result.title,/Sfery/);
-  assert.match(result.text,/Сегодня|Все задачи/);
+  assert.ok(/Сегодня|Все задачи|Пользовательское соглашение/.test(result.text),'Expected the planner or its first-launch agreement screen');
   assert.equal(path.resolve(result.dataPath).toLowerCase(),path.resolve(process.env.APPDATA,'local.sfery.planner/planner.sqlite').toLowerCase());
   const baselinePath=path.join(output,'original-baseline.json');
   if(stage==='original')fs.writeFileSync(baselinePath,JSON.stringify({snapshot:clean(result.snapshot),theme:result.theme},null,2));

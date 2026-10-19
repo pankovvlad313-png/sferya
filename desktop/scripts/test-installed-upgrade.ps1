@@ -32,10 +32,11 @@ if ($sferySetup.ExitCode -ne 0) { throw 'Original installation failed' }
 if ((Get-ItemProperty -LiteralPath $sferyRegistry).DisplayVersion -ne '1.44.0') { throw 'Original installer identity mismatch' }
 $sferyExe = Join-Path $sferyInstall 'local-planner.exe'
 $env:SFERY_TEST_EXE = $sferyExe
-$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9239'
+$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=9239 --disable-gpu --enable-logging --log-file=$sferyOutput\webview.log"
 $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $env:RUNNER_TEMP 'SferyUpgradeWebView'
 function Test-SferyStage([string]$Stage) {
-    $sferyProcess = Start-Process -FilePath $sferyExe -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $sferyOutput "$Stage-stdout.log") -RedirectStandardError (Join-Path $sferyOutput "$Stage-stderr.log")
+    # This is the interactive UI under test, on a disposable runner desktop.
+    $sferyProcess = Start-Process -FilePath $sferyExe -WindowStyle Normal -PassThru -RedirectStandardOutput (Join-Path $sferyOutput "$Stage-stdout.log") -RedirectStandardError (Join-Path $sferyOutput "$Stage-stderr.log")
     Write-Host "$Stage process started: $($sferyProcess.Id)"
     try {
         & node (Join-Path $PSScriptRoot 'installed-smoke.cjs') $Stage $sferyOutput
@@ -47,6 +48,7 @@ function Test-SferyStage([string]$Stage) {
         Write-Host "Process exited: $($sferyProcess.HasExited)"
         if ($sferyProcess.HasExited) { Write-Host "Exit code: $($sferyProcess.ExitCode)" }
         Get-Process local-planner,msedgewebview2 -ErrorAction SilentlyContinue | Select-Object Id,Name,Path | Format-Table
+        Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" | Select-Object ProcessId,CommandLine | Format-List
         throw
     } finally {
         if (-not $sferyProcess.HasExited) { Stop-Process -Id $sferyProcess.Id -Force }
