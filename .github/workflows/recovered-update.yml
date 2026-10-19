@@ -41,6 +41,7 @@ jobs:
           key: ${{ runner.os }}-sfery-rust-1.99.1-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-sfery-rust-1.99.1-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}-
+            ${{ runner.os }}-sfery-rust-1.99.1-
       - name: Test Telegram storage queries
         run: node --test ../tools/tests/test-telegram-storage.cjs
       - name: Test and build compatible installer
