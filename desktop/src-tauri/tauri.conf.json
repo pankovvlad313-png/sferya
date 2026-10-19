@@ -14,6 +14,7 @@
         "height": 755,
         "center": true,
         "resizable": true,
+        "dragDropEnabled": false,
         "decorations": true,
         "minWidth": 800,
         "minHeight": 600

@@ -45,6 +45,17 @@ jobs:
         run: ./build-update.ps1
       - name: Verify installed upgrade from v1.44.0 on synthetic data
         run: ./scripts/test-installed-upgrade.ps1
+      - name: Build standalone recovered app for local preview
+        run: |
+          cargo build --locked --release --bin sfery-recovered --manifest-path src-tauri/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { throw 'Recovered preview build failed' }
+          Copy-Item -LiteralPath src-tauri/target/release/sfery-recovered.exe -Destination dist/Sfery-Recovered.exe
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: sfery-recovered-preview
+          path: desktop/dist/Sfery-Recovered.exe
+          if-no-files-found: error
+          retention-days: 14
       - name: Sign and verify with current updater key
         if: github.event_name == 'workflow_dispatch' && inputs.sign
         env:
