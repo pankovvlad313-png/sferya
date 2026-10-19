@@ -9,6 +9,13 @@ fn error(e: impl std::fmt::Display) -> String { e.to_string() }
 const MARKER: &str = ".sfery-upgrade.json";
 const LOCK: &str = ".sfery-instance.lock";
 
+pub fn open_store(dir: &Path, version: &str) -> Result<(Upgrade, crate::storage::Store)> {
+    let upgrade = Upgrade::prepare(dir, version)?;
+    let store = crate::storage::Store::new(dir)?;
+    upgrade.finish()?;
+    Ok((upgrade, store))
+}
+
 pub fn validate_database(conn: &Connection) -> Result<()> {
     let check: String = conn.query_row("PRAGMA quick_check", [], |r| r.get(0)).map_err(error)?;
     if check != "ok" { return Err("База повреждена. Обновление остановлено; восстановите резервную копию.".into()); }

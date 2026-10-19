@@ -4,6 +4,12 @@ version = "1.45.0"
 edition = "2024"
 description = "Sfery reconstructed from the owner's shipped executable"
 publish = false
+default-run = "sfery-recovered"
+
+[[bin]]
+name = "sfery-upgrade-probe"
+path = "src/upgrade_probe.rs"
+required-features = ["upgrade-probe"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -32,6 +38,7 @@ glass_pumpkin = "=2.0.0-rc0"
 default = ["devtools"]
 devtools = ["tauri/devtools"]
 production-upgrade = []
+upgrade-probe = []
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_UI_WindowsAndMessaging"] }

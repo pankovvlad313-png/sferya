@@ -69,9 +69,7 @@ fn main() {
             if production { upgrade::check_original_process().map_err(std::io::Error::other)?; }
             let default_dir=if production { app.path().app_data_dir()? } else { app.path().app_local_data_dir()? };
             let data_dir=std::env::var_os("SFERY_RECOVERED_DATA_DIR").map(std::path::PathBuf::from).unwrap_or(default_dir);
-            let upgrade=upgrade::Upgrade::prepare(&data_dir,&app.package_info().version.to_string()).map_err(std::io::Error::other)?;
-            let store=Store::new(&data_dir).map_err(std::io::Error::other)?;
-            upgrade.finish().map_err(std::io::Error::other)?;
+            let (upgrade,store)=upgrade::open_store(&data_dir,&app.package_info().version.to_string()).map_err(std::io::Error::other)?;
             app.manage(upgrade);
             app.asset_protocol_scope().allow_directory(store.attachments_dir(),true)?;
             let integrations=integrations::IntegrationState::new(&data_dir);
