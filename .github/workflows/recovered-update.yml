@@ -1,7 +1,7 @@
 name: Recovered Sfery candidate
 on:
   push:
-    branches: [codex/prepare-recovered-update]
+    branches: [codex/prepare-recovered-update, codex/telegram-beta-1.45.1]
   workflow_dispatch:
     inputs:
       sign:
@@ -41,10 +41,12 @@ jobs:
           key: ${{ runner.os }}-sfery-rust-1.99.1-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-sfery-rust-1.99.1-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}-
+      - name: Test Telegram storage queries
+        run: node --test ../tools/tests/test-telegram-storage.cjs
       - name: Test and build compatible installer
         run: ./build-update.ps1
-      - name: Verify installed upgrade from v1.44.0 on synthetic data
-        run: ./scripts/test-installed-upgrade.ps1
+      - name: Verify installed upgrade from v1.45.0 on synthetic data
+        run: ./scripts/test-installed-upgrade.ps1 -FromVersion 1.45.0
       - name: Build standalone recovered app for local preview
         run: |
           cargo build --locked --release --bin sfery-recovered --manifest-path src-tauri/Cargo.toml
@@ -61,12 +63,12 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: ./sign-update.ps1 -Installer ./dist/update-1.45.0/Sfery_1.45.0_x64-setup.exe
+        run: ./sign-update.ps1 -Installer ./dist/update-1.45.1/Sfery_1.45.1_x64-setup.exe
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: sfery-1.45.0-candidate
-          path: desktop/dist/update-1.45.0/
+          name: sfery-1.45.1-candidate
+          path: desktop/dist/update-1.45.1/
           if-no-files-found: warn
           retention-days: 14
       - name: Save Rust build cache

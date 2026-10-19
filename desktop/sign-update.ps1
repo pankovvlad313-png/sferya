@@ -1,6 +1,8 @@
 param([Parameter(Mandatory)][string]$Installer, [string]$KeyPath)
 $ErrorActionPreference = 'Stop'
 $sferyConfig = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'src-tauri\tauri.production.conf.json') | ConvertFrom-Json
+$sferyReleaseInfo = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'release\release-info.json') | ConvertFrom-Json
+if ($sferyReleaseInfo.version -ne $sferyConfig.version) { throw 'Release metadata version mismatch' }
 $sferyInstaller = (Resolve-Path -LiteralPath $Installer).Path
 $sferyTauri = Join-Path $PSScriptRoot 'node_modules\.bin\tauri.cmd'
 $sferyArgs = @('signer', 'sign', '--app-version', $sferyConfig.version)
@@ -16,7 +18,7 @@ $sferySignature = (Get-Content -Raw -LiteralPath ($sferyInstaller + '.sig')).Tri
 $sferyName = [IO.Path]::GetFileName($sferyInstaller)
 $sferyManifest = [ordered]@{
     version = $sferyConfig.version
-    notes = 'Восстановленная Sfery: новые анимации, прежние локальные данные, резервная копия перед первым запуском.'
+    notes = "$($sferyReleaseInfo.displayVersion). $($sferyReleaseInfo.notes)"
     pub_date = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
     platforms = @{ 'windows-x86_64' = @{ url = "https://github.com/pankovvlad313-png/sferya/releases/download/v$($sferyConfig.version)/$sferyName"; signature = $sferySignature } }
 }

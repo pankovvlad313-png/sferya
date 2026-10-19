@@ -1,6 +1,7 @@
 param([string]$TargetDir)
 $ErrorActionPreference = 'Stop'
 $sferyRoot = $PSScriptRoot
+$sferyVersion = (Get-Content -Raw -LiteralPath (Join-Path $sferyRoot 'src-tauri\tauri.production.conf.json') | ConvertFrom-Json).version
 $sferyOldPath = $env:PATH
 $sferyOldTarget = $env:CARGO_TARGET_DIR
 $sferyOldJobs = $env:CARGO_BUILD_JOBS
@@ -19,9 +20,9 @@ try {
     & (Join-Path $sferyRoot 'node_modules\.bin\tauri.cmd') build --config src-tauri/tauri.production.conf.json --features production-upgrade --ci -- --locked --no-default-features
     if ($LASTEXITCODE -ne 0) { throw 'Update build failed' }
     $sferyBuild = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $sferyRoot 'src-tauri\target' }
-    $sferySetup = @(Get-ChildItem -LiteralPath (Join-Path $sferyBuild 'release\bundle\nsis') -Filter '*1.45.0*x64*setup.exe')
-    if ($sferySetup.Count -ne 1) { throw 'Expected exactly one v1.45.0 x64 installer' }
-    $sferyOut = Join-Path $sferyRoot 'dist\update-1.45.0'
+    $sferySetup = @(Get-ChildItem -LiteralPath (Join-Path $sferyBuild 'release\bundle\nsis') -Filter "*$sferyVersion*x64*setup.exe")
+    if ($sferySetup.Count -ne 1) { throw "Expected exactly one v$sferyVersion x64 installer" }
+    $sferyOut = Join-Path $sferyRoot "dist\update-$sferyVersion"
     New-Item -ItemType Directory -Path $sferyOut -Force | Out-Null
     Copy-Item -LiteralPath $sferySetup[0].FullName -Destination $sferyOut
     # Validate and expose the exact binary shipped inside NSIS, including its bundle stamp.
@@ -32,7 +33,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Could not inspect installer payload' }
     $sferyPayload = @(Get-ChildItem -LiteralPath $sferyPayloadDir -Filter local-planner.exe -Recurse)
     if ($sferyPayload.Count -ne 1) { throw 'Expected exactly one application executable inside the installer' }
-    if (-not $sferyPayload[0].VersionInfo.ProductVersion.StartsWith('1.45.0')) { throw 'Installer contains the wrong application version' }
+    if ($sferyPayload[0].VersionInfo.ProductVersion -ne $sferyVersion) { throw 'Installer contains the wrong application version' }
     Copy-Item -LiteralPath $sferyPayload[0].FullName -Destination (Join-Path $sferyOut 'local-planner.exe')
     [ordered]@{compilerExe=(Get-FileHash -LiteralPath (Join-Path $sferyBuild 'release\local-planner.exe')).Hash;installerPayload=(Get-FileHash -LiteralPath $sferyPayload[0].FullName).Hash;version=$sferyPayload[0].VersionInfo.ProductVersion} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $sferyOut 'payload-verification.json') -Encoding utf8NoBOM
     Copy-Item -LiteralPath (Join-Path $sferyRoot 'release\legacy-latest.json') -Destination (Join-Path $sferyOut 'latest.json')

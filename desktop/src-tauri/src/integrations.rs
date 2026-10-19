@@ -1,14 +1,14 @@
 //! Reconstruction using observed IPC/SQLite contracts and the public grammers 0.10 API.
 //! This is new Rust source, not original decompiler output. See ../../../../integrations/RECOVERY.md.
 use std::{collections::HashMap, fs, io, path::{Path, PathBuf}, sync::{Arc, Mutex}};
-use grammers_client::{Client, SenderPool, SignInError, client::{LoginToken, PasswordToken}, peer::Peer};
+use grammers_client::{Client, SenderPool, SignInError, client::{LoginToken, PasswordToken}};
 use grammers_session::{BoxFuture, Session, SessionData, types::{DcOption, PeerId, PeerInfo, PeerRef, UpdateState, UpdatesState}};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use rusqlite::{params, OptionalExtension};
 use crate::storage::Store;
 
 #[path="cloud.rs"] mod cloud;
+#[path="telegram.rs"] mod telegram;
 
 pub struct IntegrationState {
     data_dir: PathBuf,
@@ -17,7 +17,7 @@ pub struct IntegrationState {
     runner: Option<tokio::task::JoinHandle<()>>,
     login_token: Option<LoginToken>,
     password_token: Option<PasswordToken>,
-    peers: HashMap<String, PeerRef>,
+    peers: HashMap<String, (PeerRef, String)>,
 }
 
 impl IntegrationState {
@@ -120,16 +120,16 @@ impl IntegrationState {
             let mut q=db.conn.prepare("SELECT chat_id,enabled FROM telegram_chats").map_err(|e|e.to_string())?;
             let result=q.query_map([],|r|Ok((r.get::<_,String>(0)?,r.get::<_,i64>(1)?!=0))).map_err(|e|e.to_string())?.collect::<Result<HashMap<_,_>,_>>().map_err(|e|e.to_string())?;result};
         let client=self.client.as_ref().unwrap();
-        let mut dialogs=client.iter_dialogs(); let mut chats=Vec::new();self.peers.clear();
+        let mut dialogs=client.iter_dialogs(); let mut chats=Vec::new();let mut peers=HashMap::new();
         while let Some(dialog)=dialogs.next().await.map_err(|e|format!("Не удалось получить чаты Telegram: {e}"))? {
             let peer=dialog.peer();let Some(id)=peer.id().bot_api_dialog_id().map(|i|i.to_string()) else {continue};
-            let kind=match peer {Peer::User(_)=>"Личный чат",Peer::Group(_)=>"Группа",Peer::Channel(_)=>"Канал"};
-            let name=peer.name().unwrap_or("Без названия");
-            self.peers.insert(id.clone(),dialog.peer_ref());
+            let kind=telegram::peer_kind(peer);
+            let name=telegram::peer_name(peer);
+            peers.insert(id.clone(),(dialog.peer_ref(),name.clone()));
             chats.push(json!({"id":id,"name":name,"kind":kind,"selected":enabled.get(&id).copied().unwrap_or(false)}));
         }
         chats.sort_by(|a,b|a["name"].as_str().cmp(&b["name"].as_str()));
-        self.flush()?;Ok(json!(chats))
+        self.flush()?;self.peers=peers;Ok(json!(chats))
     }
 
     async fn select_chat(&mut self,args:&Value,store:&Mutex<Store>)->Result<Value,String> {
@@ -138,44 +138,37 @@ impl IntegrationState {
         if !selected {let db=store.lock().map_err(|_|"Хранилище недоступно")?;db.conn.execute("UPDATE telegram_chats SET enabled=0 WHERE chat_id=?1",[&id]).map_err(|e|e.to_string())?;return Ok(Value::Null);}
         let chats=self.list_chats(store).await?;
         let chat=chats.as_array().unwrap().iter().find(|c|c["id"]==id).ok_or("Чат Telegram не найден")?;
-        let peer=*self.peers.get(&id).ok_or("Чат Telegram недоступен")?;
+        let peer=self.peers.get(&id).ok_or("Чат Telegram недоступен")?.0;
         // Selection establishes an exclusive high-water mark. Older conversation history is not imported.
         let mut latest=self.client.as_ref().unwrap().iter_messages(peer).limit(1);
         let last=latest.next().await.map_err(|e|e.to_string())?.map(|m|m.id()).unwrap_or(0);
         let db=store.lock().map_err(|_|"Хранилище недоступно")?;
-        db.conn.execute("INSERT INTO telegram_chats(chat_id,name,enabled,last_message_id) VALUES(?1,?2,1,?3) ON CONFLICT(chat_id) DO UPDATE SET name=excluded.name,enabled=1,last_message_id=excluded.last_message_id",params![id,chat["name"].as_str().unwrap_or("Без названия"),last]).map_err(|e|e.to_string())?;
+        telegram::enable_chat(&db.conn,&id,chat["name"].as_str().unwrap_or("Без названия"),last)?;
         Ok(Value::Null)
     }
 
     async fn sync_telegram(&mut self,store:&Mutex<Store>)->Result<Value,String> {
         if !self.authorized().await? {return Err("Сначала подключите Telegram".into());}
-        if self.peers.is_empty(){self.list_chats(store).await?;}
         let selected={let db=store.lock().map_err(|_|"Хранилище недоступно")?;
             let mut q=db.conn.prepare("SELECT chat_id,name,last_message_id FROM telegram_chats WHERE enabled=1").map_err(|e|e.to_string())?;
             let result=q.query_map([],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,i32>(2)?))).map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?;result};
+        if selected.iter().any(|(id,_,_)|!self.peers.contains_key(id)){self.list_chats(store).await?;}
+        let mut errors=Vec::new();
         for (id,name,last) in selected {
-            let peer=*self.peers.get(&id).ok_or_else(||format!("Выбранный чат {name} больше недоступен"))?;
-            let mut messages=self.client.as_ref().unwrap().iter_messages(peer).reverse(true).offset_id(last).limit(500);
-            let mut next=last;let mut candidates=Vec::new();
-            while let Some(message)=messages.next().await.map_err(|e|format!("Не удалось прочитать выбранный чат {name}: {e}"))? {
-                if message.id()<=last {continue;} next=next.max(message.id());
-                if let Some((confidence,bucket))=classify_message(message.text()) {
-                    let sender=message.sender().and_then(Peer::name).unwrap_or("Telegram").to_owned();
-                    candidates.push((message.id(),sender,message.text().to_owned(),message.date().to_rfc3339(),confidence,bucket));
-                }
-            }
+            let Some((peer,name))=self.peers.get(&id).cloned() else {
+                errors.push(format!("Выбранный чат {name} больше недоступен"));continue;
+            };
+            let messages=match telegram::read_new_messages(self.client.as_ref().unwrap(),peer,last,&name).await {
+                Ok(messages)=>messages,
+                Err(error)=>{errors.push(format!("Не удалось прочитать выбранный чат {name}: {error}"));continue;},
+            };
+            // Do not let one unavailable chat prevent polling the other selections.
             // DB lock begins only after all requests for this batch have completed.
             let mut db=store.lock().map_err(|_|"Хранилище недоступно")?;
-            let tx=db.conn.transaction().map_err(|e|e.to_string())?;
-            let still_enabled=tx.query_row("SELECT enabled FROM telegram_chats WHERE chat_id=?1",[&id],|r|r.get::<_,i64>(0)).optional().map_err(|e|e.to_string())?.unwrap_or(0)!=0;
-            if !still_enabled {continue;}
-            for (message_id,sender,body,sent_at,confidence,bucket) in candidates {
-                tx.execute("INSERT OR IGNORE INTO telegram_candidates(chat_id,message_id,chat_name,sender,body,sent_at,confidence,bucket) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",params![id,message_id,name,sender,body,sent_at,confidence,bucket]).map_err(|e|e.to_string())?;
-            }
-            tx.execute("UPDATE telegram_chats SET last_message_id=MAX(last_message_id,?1) WHERE chat_id=?2",params![next,id]).map_err(|e|e.to_string())?;
-            tx.commit().map_err(|e|e.to_string())?;
+            if let Err(error)=telegram::save_batch(&mut db.conn,&id,&name,&messages){errors.push(error);}
         }
-        self.flush()?;Ok(Value::Null)
+        self.flush()?;
+        if errors.is_empty(){Ok(Value::Null)}else{Err(errors.join("\n"))}
     }
 
     async fn disconnect(&mut self,store:&Mutex<Store>)->Result<Value,String> {
@@ -206,14 +199,6 @@ fn env_credentials()->Option<(i32,String)>{
     original_client::ORIGINAL_API_HASH.map(|hash|(original_client::ORIGINAL_API_ID,hash.to_owned()))
 }
 fn remove_if_present(path:&Path)->Result<(),String>{match fs::remove_file(path){Ok(())=>Ok(()),Err(e) if e.kind()==io::ErrorKind::NotFound=>Ok(()),Err(e)=>Err(e.to_string())}}
-
-/// New conservative local classifier. Exact original rules/weights remain unrecovered.
-fn classify_message(text:&str)->Option<(f64,&'static str)>{
-    let t=text.trim().to_lowercase();if t.is_empty(){return None;}
-    let direct=["сделай","сделать","подготовь","подготовить","отправь","отправить","проверь","проверить","пришли","пришлите","напомни","купить","позвони","задача:","todo:"];
-    let uncertain=["нужно","надо","пожалуйста","можешь","можете","не забуд","дедлайн","до пятницы","до понедельника","на завтра","на сегодня"];
-    if direct.iter().any(|s|t.contains(s)){Some((0.85,"high"))}else if uncertain.iter().any(|s|t.contains(s)){Some((0.5,"maybe"))}else{None}
-}
 
 #[derive(Serialize,Deserialize)]
 struct StoredSession {api_id:i32,home_dc:i32,dc_options:Vec<DcOption>,peer_infos:Vec<PeerInfo>,updates_state:UpdatesState}
@@ -275,6 +260,5 @@ fn crypt(bytes:&[u8],encrypt:bool)->io::Result<Vec<u8>>{
 
 #[cfg(test)]mod tests{
     use super::*;
-    #[test]fn classifier_distinguishes_requests(){assert_eq!(classify_message("Подготовь отчёт"),Some((0.85,"high")));assert_eq!(classify_message("Можешь посмотреть завтра?"),Some((0.5,"maybe")));assert_eq!(classify_message("Доброе утро"),None);}
     #[cfg(windows)]#[test]fn windows_dpapi_roundtrip(){let encrypted=protect(b"recovery-test-only").unwrap();assert_ne!(encrypted,b"recovery-test-only");assert_eq!(unprotect(&encrypted).unwrap(),b"recovery-test-only");}
 }

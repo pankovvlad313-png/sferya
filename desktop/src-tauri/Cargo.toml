@@ -1,6 +1,6 @@
 [package]
 name = "sfery-recovered"
-version = "1.45.0"
+version = "1.45.1"
 edition = "2024"
 description = "Sfery reconstructed from the owner's shipped executable"
 publish = false
