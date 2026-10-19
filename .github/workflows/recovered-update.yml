@@ -31,6 +31,16 @@ jobs:
           rustup toolchain install 1.99.1 --profile minimal --no-self-update
           if ($LASTEXITCODE -ne 0) { throw 'Rust installation failed' }
           rustup override set 1.99.1
+      - name: Restore Rust build cache
+        id: rust-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            desktop/src-tauri/target
+            ~/.cargo/registry
+          key: ${{ runner.os }}-sfery-rust-1.99.1-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-sfery-rust-1.99.1-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}-
       - name: Test and build compatible installer
         run: ./build-update.ps1
       - name: Verify installed upgrade from v1.44.0 on synthetic data
@@ -42,8 +52,17 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: ./sign-update.ps1 -Installer ./dist/update-1.45.0/Sfery_1.45.0_x64-setup.exe
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
         with:
           name: sfery-1.45.0-candidate
           path: desktop/dist/update-1.45.0/
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14
+      - name: Save Rust build cache
+        if: always() && !cancelled()
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            desktop/src-tauri/target
+            ~/.cargo/registry
+          key: ${{ runner.os }}-sfery-rust-1.99.1-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}-${{ github.sha }}

@@ -5,3 +5,5 @@
 *.key.pub
 *.pem
 .env*
+*-wal
+*-shm

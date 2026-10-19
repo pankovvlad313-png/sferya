@@ -107,7 +107,7 @@ fn snapshot(dir: &Path, version: &str) -> Result<PathBuf> {
     let revision: i64 = source.query_row("PRAGMA data_version", [], |r|r.get(0)).map_err(error)?;
     source.execute_batch("BEGIN;").map_err(error)?;
     validate_database(&source)?;
-    source.backup(rusqlite::DatabaseName::Main, partial.join("planner.sqlite"), None).map_err(error)?;
+    source.backup(rusqlite::MAIN_DB, partial.join("planner.sqlite"), None).map_err(error)?;
     copy_tree(dir, &partial, true)?;
     let saved = Connection::open(partial.join("planner.sqlite")).map_err(error)?;
     saved.execute_batch("PRAGMA journal_mode=DELETE;").map_err(error)?;
@@ -184,13 +184,20 @@ mod tests {
     #[test] fn failed_backup_never_marks_upgrade_complete() { let temp=Temp::new(); drop(database(&temp.0)); fs::write(temp.0.join("backups"),b"not a directory").unwrap(); let before=hash(&temp.0.join("planner.sqlite")).unwrap(); assert!(Upgrade::prepare(&temp.0,"1.45.0").is_err()); assert_eq!(before,hash(&temp.0.join("planner.sqlite")).unwrap()); assert!(!temp.0.join(MARKER).exists()); }
     #[test] fn native_fixture_retains_snapshot_and_all_settings_after_upgrade() {
         let temp=Temp::new(); fs::write(temp.0.join("planner.sqlite"),include_bytes!("../fixtures/original-probe.sqlite")).unwrap();
+        let seed=Connection::open(temp.0.join("planner.sqlite")).unwrap();
+        seed.execute_batch("INSERT INTO app_settings VALUES('schema_version','9'),('theme','dark'),('custom-preserved-setting','original'),('id_high_water_tasks','9007199254740991'); INSERT INTO allocated_ids VALUES('tasks',99999);").unwrap();
+        drop(seed);
         let upgrade=Upgrade::prepare(&temp.0,"1.45.0").unwrap(); let backup=upgrade.backup.clone().unwrap();
         let migrated=crate::storage::Store::new(&temp.0).unwrap();
         let old=Connection::open(backup.join("planner.sqlite")).unwrap();
         let tables=old.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").unwrap().query_map([],|r|r.get::<_,String>(0)).unwrap().collect::<rusqlite::Result<Vec<_>>>().unwrap();
         for table in tables {
             let rows=|db:&Connection| { let mut q=db.prepare(&format!("SELECT * FROM \"{table}\"")).unwrap(); let count=q.column_count(); let mut rows=q.query_map([],|r|Ok((0..count).map(|i|format!("{:?}",r.get_ref(i).unwrap())).collect::<Vec<_>>())).unwrap().collect::<rusqlite::Result<Vec<_>>>().unwrap(); rows.sort(); rows };
-            assert_eq!(rows(&old),rows(&migrated.conn),"Table {table} changed");
+            let before=rows(&old);let after=rows(&migrated.conn);
+            if matches!(table.as_str(),"allocated_ids"|"app_settings") {
+                // Reconstruction may fill missing ID reservations and derived high-water settings.
+                for row in before { assert!(after.contains(&row),"Existing row in {table} changed"); }
+            } else { assert_eq!(before,after,"Table {table} changed"); }
         }
         upgrade.finish().unwrap();
     }

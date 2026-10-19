@@ -14,6 +14,7 @@ $sferySetup = Start-Process -FilePath $sferyOriginal -ArgumentList @('/S', "/D=$
 if ($sferySetup.ExitCode -ne 0) { throw 'Original installation failed' }
 if ((Get-ItemProperty -LiteralPath $sferyRegistry).DisplayVersion -ne '1.44.0') { throw 'Original installer identity mismatch' }
 $sferyExe = Join-Path $sferyInstall 'local-planner.exe'
+$env:SFERY_TEST_EXE = $sferyExe
 $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9239'
 $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $env:RUNNER_TEMP 'SferyUpgradeWebView'
 function Test-SferyStage([string]$Stage) {
@@ -31,6 +32,7 @@ Test-SferyStage 'original'
 $sferySetup = Start-Process -FilePath $sferyCandidate -ArgumentList @('/S', '/UPDATE', "/D=$sferyInstall") -WindowStyle Hidden -PassThru -Wait
 if ($sferySetup.ExitCode -ne 0) { throw 'Candidate installation failed' }
 if ((Get-ItemProperty -LiteralPath $sferyRegistry).DisplayVersion -ne '1.45.0') { throw 'Candidate did not update the existing installation' }
+Test-SferyStage 'candidate'
 Test-SferyStage 'candidate'
 $sferyBackups = @(Get-ChildItem -LiteralPath (Join-Path $env:APPDATA 'local.sfery.planner\backups') -Directory -Filter 'pre-update-1.45.0-*' | Where-Object { $_.Name -notlike '*.partial' })
 if ($sferyBackups.Count -ne 1) { throw 'Expected one verified pre-upgrade backup' }

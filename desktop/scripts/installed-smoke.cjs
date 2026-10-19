@@ -34,6 +34,15 @@ const clean = v => {
     const original=JSON.parse(fs.readFileSync(baselinePath));
     assert.deepEqual(clean(result.snapshot),original.snapshot,'Planner data changed during installed upgrade');
     assert.equal(result.theme,original.theme);
+    const {spawn}=require('node:child_process');
+    await new Promise((resolve,reject)=>{
+      const child=spawn(process.env.SFERY_TEST_EXE,[],{windowsHide:true,stdio:'ignore'});
+      const timer=setTimeout(()=>{child.kill();reject(Error('Second instance did not hand over to the first'));},10000);
+      child.on('error',error=>{clearTimeout(timer);reject(error)});
+      child.on('exit',code=>{clearTimeout(timer);code===0?resolve():reject(Error('Second instance exited with '+code))});
+    });
+    const stillAlive=await rpc('Runtime.evaluate',{expression:"document.title",returnByValue:true});
+    assert.match(stillAlive.result.value,/Sfery/);
   }
   const screen=await rpc('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});
   fs.writeFileSync(path.join(output,`${stage}.png`),Buffer.from(screen.data,'base64'));

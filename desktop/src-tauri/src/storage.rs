@@ -50,6 +50,7 @@ impl Store {
             conn.execute_batch(&format!("DROP TRIGGER IF EXISTS recovered_{kind}_reserve_id;")).map_err(err)?;
             conn.execute(&format!("INSERT INTO app_settings(key,value) SELECT ?1,CAST(COALESCE(MAX(id),0) AS TEXT) FROM {kind} WHERE true ON CONFLICT(key) DO UPDATE SET value=CAST(MAX(CAST(app_settings.value AS INTEGER),CAST(excluded.value AS INTEGER)) AS TEXT)"),[format!("id_high_water_{kind}")]).map_err(err)?;
         }
+        conn.execute("UPDATE app_settings SET value='9' WHERE key='schema_version'",[]).map_err(err)?;
         migration.commit().map_err(err)?;
         Ok(Self{conn,data_dir:data_dir.to_path_buf()})
     }
