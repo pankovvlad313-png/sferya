@@ -24,7 +24,17 @@ try {
     $sferyOut = Join-Path $sferyRoot 'dist\update-1.45.0'
     New-Item -ItemType Directory -Path $sferyOut -Force | Out-Null
     Copy-Item -LiteralPath $sferySetup[0].FullName -Destination $sferyOut
-    Copy-Item -LiteralPath (Join-Path $sferyBuild 'release\local-planner.exe') -Destination $sferyOut
+    # Validate and expose the exact binary shipped inside NSIS, including its bundle stamp.
+    $sferyPayloadDir = Join-Path ([IO.Path]::GetTempPath()) ('sfery-payload-' + [Guid]::NewGuid().ToString('N'))
+    $sfery7z = Get-Command 7z.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source
+    if (-not $sfery7z) { $sfery7z = 'C:\Program Files\7-Zip\7z.exe' }
+    & $sfery7z x $sferySetup[0].FullName "-o$sferyPayloadDir" -y | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Could not inspect installer payload' }
+    $sferyPayload = @(Get-ChildItem -LiteralPath $sferyPayloadDir -Filter local-planner.exe -Recurse)
+    if ($sferyPayload.Count -ne 1) { throw 'Expected exactly one application executable inside the installer' }
+    if (-not $sferyPayload[0].VersionInfo.ProductVersion.StartsWith('1.45.0')) { throw 'Installer contains the wrong application version' }
+    Copy-Item -LiteralPath $sferyPayload[0].FullName -Destination (Join-Path $sferyOut 'local-planner.exe')
+    [ordered]@{compilerExe=(Get-FileHash -LiteralPath (Join-Path $sferyBuild 'release\local-planner.exe')).Hash;installerPayload=(Get-FileHash -LiteralPath $sferyPayload[0].FullName).Hash;version=$sferyPayload[0].VersionInfo.ProductVersion} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $sferyOut 'payload-verification.json') -Encoding utf8NoBOM
     Copy-Item -LiteralPath (Join-Path $sferyRoot 'release\legacy-latest.json') -Destination (Join-Path $sferyOut 'latest.json')
     Copy-Item -LiteralPath (Join-Path $sferyRoot 'release\Update-Sfery.cmd') -Destination $sferyOut
     Copy-Item -LiteralPath (Join-Path $sferyRoot 'release\MANUAL-UPGRADE.md') -Destination $sferyOut
