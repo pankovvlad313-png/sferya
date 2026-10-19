@@ -1,0 +1,9 @@
+/node_modules/
+/src-tauri/target/
+/dist/
+*.key
+*.key.pub
+*.pem
+.env*
+*-wal
+*-shm
