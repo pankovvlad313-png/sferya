@@ -1,0 +1,22 @@
+const {test} = require('node:test');
+const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
+const {verify} = require('./verify-signature.cjs');
+test('accepts a valid signature; rejects modified file, trusted comment and wrong key', () => {
+  const {privateKey, publicKey} = crypto.generateKeyPairSync('ed25519');
+  const data = Buffer.from('synthetic installer test');
+  const keyId = crypto.randomBytes(8);
+  const packet = Buffer.concat([Buffer.from('Ed'), keyId, publicKey.export({type:'spki',format:'der'}).subarray(-32)]);
+  const key = Buffer.from(`untrusted comment: test\n${packet.toString('base64')}\n`).toString('base64');
+  const rawSig = crypto.sign(null, crypto.createHash('blake2b512').update(data).digest(), privateKey);
+  const sigPacket = Buffer.concat([Buffer.from('ED'), keyId, rawSig]);
+  const comment = 'version:1.45.0';
+  const global = crypto.sign(null, Buffer.concat([rawSig, Buffer.from(comment)]), privateKey);
+  const signatureText = `untrusted comment: test\n${sigPacket.toString('base64')}\ntrusted comment: ${comment}\n${global.toString('base64')}\n`;
+  const signature = Buffer.from(signatureText).toString('base64');
+  assert.equal(verify(data, signature, key), comment);
+  assert.throws(() => verify(Buffer.from('changed'), signature, key));
+  assert.throws(() => verify(data, Buffer.from(signatureText.replace('1.45.0','9.99.0')).toString('base64'), key));
+  const otherKey = Buffer.from(packet); otherKey[3] ^= 1;
+  assert.throws(() => verify(data, signature, Buffer.from(`untrusted comment: test\n${otherKey.toString('base64')}`).toString('base64')));
+});

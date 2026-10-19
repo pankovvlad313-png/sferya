@@ -1,0 +1,49 @@
+name: Recovered Sfery candidate
+on:
+  push:
+    branches: [codex/prepare-recovered-update]
+  workflow_dispatch:
+    inputs:
+      sign:
+        description: Sign with the existing Sfery updater key after candidate testing
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: recovered-candidate-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal --no-self-update
+          if ($LASTEXITCODE -ne 0) { throw 'Rust installation failed' }
+          rustup override set 1.99.1
+      - name: Test and build compatible installer
+        run: ./build-update.ps1
+      - name: Verify installed upgrade from v1.44.0 on synthetic data
+        run: ./scripts/test-installed-upgrade.ps1
+      - name: Sign and verify with original updater key
+        if: github.event_name == 'workflow_dispatch' && inputs.sign
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: ./sign-update.ps1 -Installer ./dist/update-1.45.0/Sfery_1.45.0_x64-setup.exe
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: sfery-1.45.0-candidate
+          path: desktop/dist/update-1.45.0/
+          if-no-files-found: error
+          retention-days: 14

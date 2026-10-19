@@ -1,0 +1,6 @@
+{
+  "productName": "Sfery Upgrade Test",
+  "identifier": "local.sfery.planner.upgrade-test",
+  "bundle": { "active": false },
+  "plugins": { "updater": { "endpoints": ["http://127.0.0.1:19451/latest.json"], "dangerousInsecureTransportProtocol": true } }
+}
