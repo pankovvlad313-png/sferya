@@ -1,6 +1,6 @@
 {
   "productName": "Sfery Recovered",
-  "version": "1.45.2",
+  "version": "1.45.3",
   "identifier": "local.sfery.planner.recovered",
   "build": {
     "frontendDist": "../frontend-dist"
