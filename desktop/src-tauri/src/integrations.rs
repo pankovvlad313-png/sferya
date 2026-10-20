@@ -120,15 +120,16 @@ impl IntegrationState {
             let mut q=db.conn.prepare("SELECT chat_id,enabled FROM telegram_chats").map_err(|e|e.to_string())?;
             let result=q.query_map([],|r|Ok((r.get::<_,String>(0)?,r.get::<_,i64>(1)?!=0))).map_err(|e|e.to_string())?.collect::<Result<HashMap<_,_>,_>>().map_err(|e|e.to_string())?;result};
         let client=self.client.as_ref().unwrap();
-        let mut dialogs=client.iter_dialogs(); let mut chats=Vec::new();let mut peers=HashMap::new();
+        let mut dialogs=client.iter_dialogs(); let mut chats=Vec::new();let mut peers=HashMap::new();let mut visible=std::collections::HashSet::new();
         while let Some(dialog)=dialogs.next().await.map_err(|e|format!("Не удалось получить чаты Telegram: {e}"))? {
             let peer=dialog.peer();let Some(id)=peer.id().bot_api_dialog_id().map(|i|i.to_string()) else {continue};
             let kind=telegram::peer_kind(peer);
             let name=telegram::peer_name(peer);
             peers.insert(id.clone(),(dialog.peer_ref(),name.clone()));
-            chats.push(json!({"id":id,"name":name,"kind":kind,"selected":enabled.get(&id).copied().unwrap_or(false)}));
+            // Cache archived peers for previously enabled polling; preserve Telegram's server order.
+            if !telegram::visible_dialog(&dialog.raw) || !visible.insert(id.clone()) {continue;}
+            chats.push(json!({"id":id,"name":name,"username":peer.username().unwrap_or_default(),"kind":kind,"selected":enabled.get(&id).copied().unwrap_or(false)}));
         }
-        chats.sort_by(|a,b|a["name"].as_str().cmp(&b["name"].as_str()));
         self.flush()?;self.peers=peers;Ok(json!(chats))
     }
 

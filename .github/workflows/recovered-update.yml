@@ -64,12 +64,12 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: ./sign-update.ps1 -Installer ./dist/update-1.45.1/Sfery_1.45.1_x64-setup.exe
+        run: ./sign-update.ps1 -Installer ./dist/update-1.45.2/Sfery_1.45.2_x64-setup.exe
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: sfery-1.45.1-candidate
-          path: desktop/dist/update-1.45.1/
+          name: sfery-1.45.2-candidate
+          path: desktop/dist/update-1.45.2/
           if-no-files-found: warn
           retention-days: 14
       - name: Save Rust build cache

@@ -18,11 +18,15 @@ fn person_name(first: Option<&str>, last: Option<&str>, username: Option<&str>, 
     .collect::<Vec<_>>()
     .join(" ");
     match (name.is_empty(), username.filter(|s| !s.is_empty())) {
-        (false, Some(username)) => format!("{name} (@{username})"),
-        (false, None) => name,
+        (false, _) => name,
         (true, Some(username)) => format!("@{username}"),
         (true, None) => format!("Аккаунт {id}"),
     }
+}
+
+/// Main Telegram list only: an archive folder itself is never a selectable peer.
+pub fn visible_dialog(raw: &tl::enums::Dialog) -> bool {
+    matches!(raw, tl::enums::Dialog::Dialog(d) if d.folder_id.unwrap_or(0) == 0)
 }
 
 pub fn peer_name(peer: &Peer) -> String {
@@ -378,10 +382,86 @@ mod tests {
     }
 
     #[test]
-    fn names_distinguish_people_and_search_by_username() {
+    fn main_list_keeps_server_order_and_hides_archived_pins() {
+        let dialog = |id, pinned, folder_id| {
+            tl::enums::Dialog::Dialog(tl::types::Dialog {
+                pinned,
+                unread_mark: false,
+                view_forum_as_messages: false,
+                peer: tl::types::PeerUser { user_id: id }.into(),
+                top_message: 0,
+                read_inbox_max_id: 0,
+                read_outbox_max_id: 0,
+                unread_count: 0,
+                unread_mentions_count: 0,
+                unread_reactions_count: 0,
+                unread_poll_votes_count: 0,
+                notify_settings: tl::types::PeerNotifySettings {
+                    show_previews: None,
+                    silent: None,
+                    mute_until: None,
+                    ios_sound: None,
+                    android_sound: None,
+                    other_sound: None,
+                    stories_muted: None,
+                    stories_hide_sender: None,
+                    stories_ios_sound: None,
+                    stories_android_sound: None,
+                    stories_other_sound: None,
+                }
+                .into(),
+                pts: None,
+                draft: None,
+                folder_id,
+                ttl_period: None,
+            })
+        };
+        let rows = [
+            dialog(9, true, None),
+            dialog(3, true, Some(0)),
+            dialog(8, true, Some(1)),
+            dialog(7, false, None),
+            dialog(1, false, Some(1)),
+            dialog(2, false, None),
+        ];
+        let ids: Vec<_> = rows
+            .iter()
+            .filter(|raw| visible_dialog(raw))
+            .map(|raw| match raw {
+                tl::enums::Dialog::Dialog(d) => match &d.peer {
+                    tl::enums::Peer::User(p) => p.user_id,
+                    _ => 0,
+                },
+                _ => 0,
+            })
+            .collect();
+        assert_eq!(ids, [9, 3, 7, 2]);
+        let folder = tl::types::DialogFolder {
+            pinned: true,
+            folder: tl::types::Folder {
+                autofill_new_broadcasts: false,
+                autofill_public_groups: false,
+                autofill_new_correspondents: false,
+                id: 1,
+                title: "Архив".into(),
+                photo: None,
+            }
+            .into(),
+            peer: tl::types::PeerUser { user_id: 0 }.into(),
+            top_message: 0,
+            unread_muted_peers_count: 0,
+            unread_unmuted_peers_count: 0,
+            unread_muted_messages_count: 0,
+            unread_unmuted_messages_count: 0,
+        };
+        assert!(!visible_dialog(&tl::enums::Dialog::Folder(folder)));
+    }
+
+    #[test]
+    fn names_use_saved_contact_name_with_username_only_as_fallback() {
         assert_eq!(
             person_name(Some("Анна"), Some("Иванова"), Some("anna"), 42),
-            "Анна Иванова (@anna)"
+            "Анна Иванова"
         );
         assert_eq!(
             person_name(Some("Анна"), Some("Петрова"), None, 43),
